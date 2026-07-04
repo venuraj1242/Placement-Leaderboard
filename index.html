@@ -536,8 +536,8 @@ function renderDataSourcePill(live, error){
 function renderStats(totals){
   const cards = [
     { label:"Total Weekly Placements", val:totals.weeklyPlaced, accent:"var(--blue)" },
-    { label:"Placed by Anudip",        val:totals.anudip,       accent:"var(--purple)" },
-    { label:"Self Placed",             val:totals.self,         accent:"var(--green)" },
+    { label:"Weekly Placed by Anudip",        val:totals.anudip,       accent:"var(--purple)" },
+    { label:"Weekly Self Placed",             val:totals.self,         accent:"var(--green)" },
     { label:"Total Placements",        val:totals.totalPlaced,  accent:"var(--gold)" }
   ];
   const grid = document.getElementById("statGrid");
