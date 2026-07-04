@@ -3,6 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Defense-in-depth: even with the HTML-escaping in the JS below, this locks down
+     what the page is allowed to load/connect to, in case anything unexpected
+     ever gets injected. Update connect-src if you change SHEET_WEBAPP_URL to a
+     different domain.
+     Note: 'unsafe-inline' is required for script-src because this is a single
+     self-contained HTML file with the dashboard logic inline (no build step or
+     backend to issue a per-request nonce). This CSP still blocks any injected
+     content from loading external scripts, images, or exfiltrating data to
+     unapproved domains — the main protection against the sheet-data XSS risk
+     is the escapeHtml() used throughout the JS below, not this header alone. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src https://script.google.com https://script.googleusercontent.com;
+  base-uri 'none';
+  form-action 'none';
+">
 <title>MSDF Weekly Placement Leaderboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -131,7 +151,7 @@ body{
 .leaderboard{ display:flex; flex-direction:column; gap:12px; }
 .lb-row{
   display:grid;
-  grid-template-columns:56px 1.6fr 0.9fr 0.9fr 0.9fr 1.4fr 0.9fr 0.9fr;
+  grid-template-columns:56px 1.6fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 1.4fr;
   align-items:center; gap:14px; padding:16px 18px;
   opacity:0; transform:translateX(-24px);
   animation:slideIn 0.55s ease forwards;
@@ -153,7 +173,7 @@ body{
 }
 .progress-pct{ font-size:11px; color:var(--ink-dim); margin-top:5px; font-family:var(--font-mono); text-align:right;}
 .lb-head-row{
-  display:grid; grid-template-columns:56px 1.6fr 0.9fr 0.9fr 0.9fr 1.4fr 0.9fr 0.9fr;
+  display:grid; grid-template-columns:56px 1.6fr 0.9fr 0.9fr 0.9fr 0.9fr 0.9fr 1.4fr;
   gap:14px; padding:0 18px; font-size:11px; text-transform:uppercase; letter-spacing:0.07em;
   color:var(--ink-dimmer); margin-bottom:4px;
 }
@@ -246,17 +266,15 @@ body{
   .ach-grid{ grid-template-columns:repeat(2,1fr); }
   .prog-grid{ grid-template-columns:repeat(3,1fr); }
   .chart-grid{ grid-template-columns:1fr; }
-  .lb-row, .lb-head-row{ grid-template-columns:40px 1.3fr 0.8fr 0.8fr 1.2fr; }
-  .lb-head-row span:nth-child(6), .lb-head-row span:nth-child(7),
-  .lb-row .hide-sm{ display:none; }
+  .lb-row, .lb-head-row{ grid-template-columns:40px 1.3fr 0.8fr 0.8fr 0.8fr 1.2fr; }
+  .lb-row .hide-sm, .lb-head-row .hide-sm{ display:none; }
 }
 @media (max-width:620px){
   .stat-grid{ grid-template-columns:repeat(2,1fr); }
   .ach-grid{ grid-template-columns:1fr 1fr; }
   .prog-grid{ grid-template-columns:repeat(2,1fr); }
-  .lb-row, .lb-head-row{ grid-template-columns:34px 1fr 0.8fr 1fr; }
-  .lb-head-row span:nth-child(4), .lb-head-row span:nth-child(5),
-  .lb-row .hide-xs{ display:none; }
+  .lb-row, .lb-head-row{ grid-template-columns:34px 1fr 0.9fr 1.2fr; }
+  .lb-row .hide-xs, .lb-head-row .hide-xs{ display:none; }
   .ops-bar-row{ grid-template-columns:80px 1fr 36px; }
 }
 
@@ -294,9 +312,10 @@ body{
       <span class="tag">Ranked by Weekly Placed Updated</span>
     </div>
     <div class="lb-head-row">
-      <span>Rank</span><span style="text-align:left">State</span><span>Placed Weekly</span>
-      <span class="hide-xs">Target</span><span class="hide-sm">Total</span>
-      <span>Progress</span><span class="hide-sm">Anudip</span><span class="hide-xs">Self</span>
+      <span>Rank</span><span style="text-align:left">State</span>
+      <span class="hide-xs">Target</span><span class="hide-sm">Total Placed</span>
+      <span>Weekly Placed</span><span class="hide-xs">Weekly Self</span><span class="hide-sm">Weekly Anudip</span>
+      <span>Progress</span>
     </div>
     <div class="leaderboard" id="leaderboard"></div>
   </section>
@@ -368,6 +387,12 @@ const CONFIG = {
   // reads your Google Sheet and returns JSON in this exact shape.
   SHEET_WEBAPP_URL: "https://script.google.com/macros/s/AKfycbxtkvgGqEpF-gA_QBxI7KUe27lC3HoLJlV1rAJJgPcf_WgVLJR5iiPX8Urdo2NlhdW7jg/exec",
 
+  // Must exactly match ACCESS_TOKEN in Code.gs. This deters casual scraping
+  // and search-engine crawling of the bare data endpoint — it does NOT make
+  // the endpoint truly private, since this whole file (including this token)
+  // is publicly visible on GitHub Pages. See the security note in Code.gs.
+  SHEET_ACCESS_TOKEN: "x1JcBQmGU5yRX_af5BTctAC6syXeZ_5E",
+
   // Used only when SHEET_WEBAPP_URL is empty, or if the live fetch fails.
   FALLBACK_DATA: {
     period: { start: "2026-06-01", end: "2026-07-30" },
@@ -394,7 +419,8 @@ const CONFIG = {
 async function loadData(){
   if (CONFIG.SHEET_WEBAPP_URL && CONFIG.SHEET_WEBAPP_URL.trim().length > 0){
     try{
-      const res = await fetch(CONFIG.SHEET_WEBAPP_URL, { method:"GET" });
+      const url = CONFIG.SHEET_WEBAPP_URL + "?key=" + encodeURIComponent(CONFIG.SHEET_ACCESS_TOKEN);
+      const res = await fetch(url, { method:"GET" });
       const raw = await res.text();  // read as text first so bad payloads don't throw before we can log them
       if (!res.ok){
         console.error("Sheet fetch returned status " + res.status + ". Body was:", raw.slice(0,500));
@@ -406,6 +432,10 @@ async function loadData(){
       }catch(parseErr){
         console.error("Sheet response wasn't valid JSON — this usually means the Apps Script URL is showing a login/permission page instead of your data. Raw response:", raw.slice(0,500));
         throw parseErr;
+      }
+      if (json && json.error){
+        console.error("Sheet rejected the request:", json.error, "— check that SHEET_ACCESS_TOKEN here matches ACCESS_TOKEN in Code.gs.");
+        throw new Error("Access token rejected: " + json.error);
       }
       if (!Array.isArray(json.placement) || !Array.isArray(json.operations) || json.placement.length === 0 || json.operations.length === 0){
         console.error("Sheet response was valid JSON but didn't contain the expected placement/operations arrays:", json);
@@ -460,6 +490,20 @@ function deriveAll(data){
 const MEDALS = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
 const fmt = n => Number(n).toLocaleString("en-IN");
 function rankIcon(i){ return MEDALS[i] || (i+1)+"️⃣"; }
+
+// Sheet data is a shared, editable source — any string field (state names,
+// etc.) must be escaped before going into innerHTML, or a stray "<" typed
+// into a cell (accidental or not) could inject markup/script into the page
+// for every visitor. Numbers already go through fmt()/Number(), which are
+// safe by construction.
+function escapeHtml(str){
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 function animateCount(el, to, duration=1200){
   const start = performance.now();
@@ -525,16 +569,16 @@ function renderLeaderboard(ranked, playConfetti){
   el.innerHTML = ranked.map((r,i)=>`
     <div class="lb-row glass ${i===0?'rank-1':''}" style="animation-delay:${i*0.09}s" data-rank="${i}">
       <div class="rank-badge">${rankIcon(i)}</div>
-      <div class="lb-state">${r.state}<span class="region">${r.progressPct>=50?'On track':'Needs push'}</span></div>
-      <div class="lb-figure">${fmt(r.weeklyPlaced)}<span class="k">Weekly</span></div>
+      <div class="lb-state">${escapeHtml(r.state)}<span class="region">${r.progressPct>=50?'On track':'Needs push'}</span></div>
       <div class="lb-figure hide-xs">${fmt(r.target)}<span class="k">Target</span></div>
       <div class="lb-figure hide-sm">${fmt(r.totalPlaced)}<span class="k">Total</span></div>
+      <div class="lb-figure">${fmt(r.weeklyPlaced)}<span class="k">Weekly</span></div>
+      <div class="lb-figure hide-xs">${fmt(r.self)}<span class="k">Self</span></div>
+      <div class="lb-figure hide-sm">${fmt(r.anudip)}<span class="k">Anudip</span></div>
       <div>
         <div class="progress-track"><div class="progress-fill" data-w="${Math.min(100,r.progressPct)}"></div></div>
         <div class="progress-pct">${r.progressPct.toFixed(1)}%</div>
       </div>
-      <div class="lb-figure hide-sm">${fmt(r.anudip)}<span class="k">Anudip</span></div>
-      <div class="lb-figure hide-xs">${fmt(r.self)}<span class="k">Self</span></div>
     </div>`).join("");
 
   requestAnimationFrame(()=>{
@@ -557,7 +601,7 @@ function renderAchievements(d){
       <div class="ach-icon">${c.icon}</div>
       <div class="ach-title">${c.title}</div>
       <div class="ach-value" style="color:${c.accent}">${c.value}</div>
-      <div class="ach-who">${c.who}</div>
+      <div class="ach-who">${escapeHtml(c.who)}</div>
     </div>`).join("");
 }
 
@@ -577,7 +621,7 @@ function renderProgressRings(placement, progressLeaderState){
         </svg>
         <div class="ring-label">${pct.toFixed(0)}%</div>
       </div>
-      <div class="prog-state">${isLeader?'👑 ':''}${r.state}</div>
+      <div class="prog-state">${isLeader?'👑 ':''}${escapeHtml(r.state)}</div>
       <div class="prog-sub">${fmt(r.totalPlaced)} / ${fmt(r.target)}</div>
     </div>`;
   }).join("");
@@ -592,7 +636,7 @@ function renderOpsLeaderboard(ranked){
   el.innerHTML = ranked.map((r,i)=>`
     <div class="ops-row glass" style="animation-delay:${i*0.09}s">
       <div class="ops-top">
-        <div class="ops-name">${rankIcon(i)} ${r.state}</div>
+        <div class="ops-name">${rankIcon(i)} ${escapeHtml(r.state)}</div>
         <div class="ops-sel">${fmt(r.selection)} selections</div>
       </div>
       <div class="ops-bars">
@@ -677,15 +721,15 @@ function renderCharts(d){
 function renderMotivation(d){
   const msgs = [];
   msgs.push({ icon:"🏆", accent:"var(--gold)",
-    html:`Congratulations <b>${d.weeklyChampion.state}</b>! You secured the highest weekly placements with <b>${fmt(d.weeklyChampion.weeklyPlaced)}</b> successful placements this week.` });
+    html:`Congratulations <b>${escapeHtml(d.weeklyChampion.state)}</b>! You secured the highest weekly placements with <b>${fmt(d.weeklyChampion.weeklyPlaced)}</b> successful placements this week.` });
   msgs.push({ icon:"🔥", accent:"var(--purple)",
-    html:`<b>${d.anudipChampion.state}</b> achieved the highest Anudip-sourced placements with <b>${fmt(d.anudipChampion.anudip)}</b>.` });
+    html:`<b>${escapeHtml(d.anudipChampion.state)}</b> achieved the highest Anudip-sourced placements with <b>${fmt(d.anudipChampion.anudip)}</b>.` });
   msgs.push({ icon:"⭐", accent:"var(--green)",
-    html:`<b>${d.selfChampion.state}</b> leads on Self Placements with <b>${fmt(d.selfChampion.self)}</b>.` });
+    html:`<b>${escapeHtml(d.selfChampion.state)}</b> leads on Self Placements with <b>${fmt(d.selfChampion.self)}</b>.` });
   msgs.push({ icon:"🎯", accent:"var(--blue)",
-    html:`<b>${d.progressLeader.state}</b> is closest to target at <b>${d.progressLeader.progressPct.toFixed(1)}%</b> of goal.` });
+    html:`<b>${escapeHtml(d.progressLeader.state)}</b> is closest to target at <b>${d.progressLeader.progressPct.toFixed(1)}%</b> of goal.` });
   if (d.laggards.length){
-    const names = d.laggards.map(r=>r.state).join(" and ");
+    const names = d.laggards.map(r=>escapeHtml(r.state)).join(" and ");
     msgs.push({ icon:"💪", accent:"var(--ink-dim)",
       html:`<b>${names}</b> ${d.laggards.length>1?'are':'is'} encouraged to build momentum next week — every placement counts.` });
   }
@@ -721,7 +765,7 @@ async function renderDashboard(data, live, error, playConfetti){
   renderMotivation(d);
 }
 
-const AUTO_REFRESH_MS = 2 * 60 * 1000; // re-fetch the sheet every 2 seconds
+const AUTO_REFRESH_MS = 1 * 60 * 1000; // re-fetch the sheet every 1 minute
 
 async function loadAndRender(playConfetti){
   try{
