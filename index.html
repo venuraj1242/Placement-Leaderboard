@@ -524,13 +524,14 @@ function renderPeriod(period){
   document.getElementById("periodLabel").textContent = `${s} – ${e}`;
 }
 
+
 function renderDataSourcePill(live, error){
   const el = document.getElementById("dataSourcePill");
   el.innerHTML = `<div class="datasrc ${live?'live':'demo'}"><span class="dot"></span>${
     live ? "Live data from Google Sheet" : "Demo data — connect Apps Script URL in CONFIG to go live"
   }</div>`;
   document.getElementById("footerSrc").textContent = live
-    ? "Source: Google Sheet"
+    ? "Source: Google Sheet "
     : "Source: embedded fallback data (CONFIG.FALLBACK_DATA)";
 }
 
