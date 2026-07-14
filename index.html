@@ -331,7 +331,7 @@ body{
   <!-- ================= PROGRESS TOWARD TARGET ================= -->
   <section class="section">
     <div class="section-head">
-      <div><div class="eyebrow">Target Tracking</div><h2>Progress Toward Target</h2></div>
+      <div><div class="eyebrow">Target Tracking</div><h2>Progress</h2></div>
       <span class="tag">Total Placed ÷ Total Assessed</span>
     </div>
     <div class="prog-grid" id="progGrid"></div>
@@ -682,15 +682,35 @@ function renderCharts(d){
       scales:{ x:{stacked:true, grid:{display:false}}, y:{stacked:true, grid:{color:gridColor}} } }
   });
 
-  makeChart("chartTargetVsTotal", {
-    type:"bar",
-    data:{ labels, datasets:[
-      { label:"Target", data:d.placement.map(r=>r.target), backgroundColor:"rgba(37,99,235,0.35)", borderRadius:6 },
-      { label:"Total Placed", data:d.placement.map(r=>r.totalPlaced), backgroundColor:"#2563EB", borderRadius:6 }
-    ]},
-    options:{ responsive:true, plugins:{legend:{position:"bottom"}},
-      scales:{ x:{grid:{display:false}}, y:{grid:{color:gridColor}} } }
-  });
+makeChart("chartTargetVsTotal", {
+  type: "bar",
+  data: {
+    labels,
+    datasets: [
+      { 
+        label: "Target", 
+        data: d.placement.map(r => r.target), 
+        backgroundColor: "#F97316", // orange
+        borderRadius: 6 
+      },
+      { 
+        label: "Total Placed", 
+        data: d.placement.map(r => r.totalPlaced), 
+        backgroundColor: "#10B981", // green
+        borderRadius: 6 
+      }
+    ]
+  },
+  options: { 
+    responsive: true, 
+    plugins: { legend: { position: "bottom" } },
+    scales: { 
+      x: { grid: { display: false } }, 
+      y: { grid: { color: gridColor } } 
+    } 
+  }
+});
+
 
   makeChart("chartPie", {
     type:"doughnut",
